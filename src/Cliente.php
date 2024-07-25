@@ -2,16 +2,64 @@
 
 namespace PedroQuezado\Code\Correios;
 
+/**
+ * Classe Cliente para integração com os serviços dos Correios.
+ */
 class Cliente
 {
+    /**
+     * @var string $usuario Usuário de autenticação.
+     */
     private $usuario;
+
+    /**
+     * @var string $senha Senha de autenticação.
+     */
     private $senha;
+
+    /**
+     * @var string $numeroCartaoPostagem Número do cartão de postagem.
+     */
     private $numeroCartaoPostagem;
+
+    /**
+     * @var string $token Token de autenticação.
+     */
     private $token;
+
+    /**
+     * @var int $tokenExpiration Timestamp de expiração do token.
+     */
     private $tokenExpiration;
+
+    /**
+     * @var string $baseUrl URL base da API dos Correios.
+     */
     private $baseUrl;
+
+    /**
+     * @var array $produtos Lista de produtos a serem consultados.
+     */
     private $produtos = [];
 
+    /**
+     * @var array $respostaPreco Resposta da consulta de preços.
+     */
+    private $respostaPreco;
+
+    /**
+     * @var array $respostaPrazo Resposta da consulta de prazos.
+     */
+    private $respostaPrazo;
+
+    /**
+     * Construtor da classe Cliente.
+     *
+     * @param string $usuario Usuário de autenticação.
+     * @param string $senha Senha de autenticação.
+     * @param string $numeroCartaoPostagem Número do cartão de postagem.
+     * @param bool $producao Indica se é ambiente de produção (true) ou homologação (false).
+     */
     public function __construct($usuario, $senha, $numeroCartaoPostagem, $producao = true)
     {
         $this->usuario = $usuario;
@@ -21,6 +69,12 @@ class Cliente
         $this->token = $this->obterToken();
     }
 
+    /**
+     * Obtém o token de autenticação.
+     *
+     * @return string Token de autenticação.
+     * @throws ClienteException Em caso de erro na obtenção do token.
+     */
     private function obterToken()
     {
         $credenciais = base64_encode("{$this->usuario}:{$this->senha}");
@@ -52,6 +106,9 @@ class Cliente
         return $responseDecoded['token'];
     }
 
+    /**
+     * Verifica a validade do token e renova se necessário.
+     */
     private function verificarToken()
     {
         if (time() >= $this->tokenExpiration) {
@@ -59,12 +116,24 @@ class Cliente
         }
     }
 
+    /**
+     * Insere um produto na lista de produtos a serem consultados.
+     *
+     * @param string $coProduto Código do produto.
+     * @param array $arrProduto Dados do produto.
+     */
     public function inserirProduto($coProduto, array $arrProduto) 
     {
         $arrProduto['coProduto'] = $coProduto;
         $this->produtos[] = $arrProduto;
     }
 
+    /**
+     * Consulta os preços dos produtos inseridos.
+     *
+     * @return array Resposta da consulta de preços.
+     * @throws ClienteException Em caso de erro na consulta de preços.
+     */
     public function consultarPreco()
     {
         $this->verificarToken();
@@ -94,25 +163,62 @@ class Cliente
             throw new ClienteException('Erro ao consultar preço', $httpCode, $response);
         }
 
-        return json_decode($response, true);
+        $this->respostaPreco = json_decode($response, true);
+        return $this->respostaPreco;
     }
 
+    /**
+     * Consulta o preço total de um produto específico.
+     *
+     * @param string $coProduto Código do produto.
+     * @return float Preço total do produto.
+     * @throws ClienteException Em caso de erro na consulta de preços ou se preços não foram consultados ainda.
+     */
+    public function consultarPrecoTotal($coProduto)
+    {
+        if (empty($this->respostaPreco)) {
+            throw new ClienteException('Preço não foi consultado ainda.');
+        }
+
+        $total = 0;
+        foreach ($this->respostaPreco as $produto) {
+            if ($produto['coProduto'] === $coProduto) {
+                $total += (float)str_replace(',', '.', $produto['pcFinal']);
+            }
+        }
+
+        return $total;
+    }
+
+    /**
+     * Consulta os prazos de entrega dos produtos inseridos.
+     *
+     * @param string $dataPostagem Data de postagem no formato YYYY-MM-DD.
+     * @param string $cepOrigem CEP de origem.
+     * @param string $cepDestino CEP de destino.
+     * @param string|null $dtEvento Data do evento no formato DD-MM-YYYY (opcional).
+     * @return array Resposta da consulta de prazos.
+     * @throws ClienteException Em caso de erro na consulta de prazos.
+     */
     public function consultarPrazo($dataPostagem, $cepOrigem, $cepDestino, $dtEvento = null)
     {
-        $this->verificarToken();
+        $this->verificarToken(); // Verifica se o token de autenticação é válido e, se necessário, renova o token.
 
-        $dtEvento = $dtEvento ? $dtEvento : date("d-m-Y", strtotime($dataPostagem));
+        $dtEvento = $dtEvento ? $dtEvento : date("d-m-Y", strtotime($dataPostagem)); // Define a data do evento. Se $dtEvento não for fornecido, usa a data de postagem convertida para o formato DD-MM-YYYY.
+
 
         $parametrosPrazo = array_map(function ($produto) use ($dataPostagem, $cepOrigem, $cepDestino, $dtEvento) {
+            // Mapeia os produtos para criar os parâmetros de prazo para a consulta
             return [
-                "coProduto" => $produto['coProduto'],
-                "nuRequisicao" => $produto['nuRequisicao'],
-                "dtEvento" => $dtEvento,
-                "cepOrigem" => $cepOrigem,
-                "cepDestino" => $cepDestino,
-                "dataPostagem" => $dataPostagem
+                "coProduto" => $produto['coProduto'], // Código do produto
+                "nuRequisicao" => $produto['nuRequisicao'], // Número de requisição do produto
+                "dtEvento" => $dtEvento, // Data do evento (formato DD-MM-YYYY)
+                "cepOrigem" => $cepOrigem, // CEP de origem
+                "cepDestino" => $cepDestino, // CEP de destino
+                "dataPostagem" => $dataPostagem // Data de postagem (formato YYYY-MM-DD)
             ];
-        }, $this->produtos);
+        }, $this->produtos); // Aplica a função para cada produto no array $this->produtos
+
 
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, "{$this->baseUrl}/prazo/v1/nacional");
@@ -139,6 +245,29 @@ class Cliente
             throw new ClienteException('Erro ao consultar prazo', $httpCode, $response);
         }
 
-        return json_decode($response, true);
+        $this->respostaPrazo = json_decode($response, true);
+        return $this->respostaPrazo;
+    }
+
+    /**
+     * Consulta o prazo total de entrega de um produto específico.
+     *
+     * @param string $coProduto Código do produto.
+     * @return array Prazo total de entrega do produto.
+     * @throws ClienteException Em caso de erro na consulta de prazos ou se prazos não foram consultados ainda.
+     */
+    public function consultarPrazoTotal($coProduto)
+    {
+        if (empty($this->respostaPrazo)) {
+            throw new ClienteException('Prazo não foi consultado ainda.');
+        }
+
+        foreach ($this->respostaPrazo as $produto) {
+            if ($produto['coProduto'] === $coProduto) {
+                return $produto;
+            }
+        }
+
+        throw new ClienteException('Produto não encontrado na resposta do prazo.');
     }
 }
