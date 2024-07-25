@@ -2,8 +2,6 @@
 
 namespace PedroQuezado\Code\Correios;
 
-use PedroQuezado\Code\Correios\ClienteException;
-
 class Cliente
 {
     private $usuario;
@@ -12,6 +10,7 @@ class Cliente
     private $token;
     private $tokenExpiration;
     private $baseUrl;
+    private $produtos = [];
 
     public function __construct($usuario, $senha, $numeroCartaoPostagem, $producao = true)
     {
@@ -60,12 +59,13 @@ class Cliente
         }
     }
 
-    public function adicionarProduto($parametrosProduto)
+    public function inserirProduto($coProduto, array $arrProduto) 
     {
-        return $parametrosProduto;
+        $arrProduto['coProduto'] = $coProduto;
+        $this->produtos[] = $arrProduto;
     }
 
-    public function consultarPreco(array $parametrosProduto)
+    public function consultarPreco()
     {
         $this->verificarToken();
 
@@ -74,7 +74,7 @@ class Cliente
         curl_setopt($ch, CURLOPT_POST, 1);
         curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode([
             "idLote" => "1",
-            "parametrosProduto" => $parametrosProduto
+            "parametrosProduto" => $this->produtos
         ]));
         curl_setopt($ch, CURLOPT_HTTPHEADER, [
             "Content-Type: application/json",
@@ -92,6 +92,51 @@ class Cliente
 
         if ($httpCode != 200) {
             throw new ClienteException('Erro ao consultar preço', $httpCode, $response);
+        }
+
+        return json_decode($response, true);
+    }
+
+    public function consultarPrazo($dataPostagem, $cepOrigem, $cepDestino, $dtEvento = null)
+    {
+        $this->verificarToken();
+
+        $dtEvento = $dtEvento ? $dtEvento : date("d-m-Y", strtotime($dataPostagem));
+
+        $parametrosPrazo = array_map(function ($produto) use ($dataPostagem, $cepOrigem, $cepDestino, $dtEvento) {
+            return [
+                "coProduto" => $produto['coProduto'],
+                "nuRequisicao" => $produto['nuRequisicao'],
+                "dtEvento" => $dtEvento,
+                "cepOrigem" => $cepOrigem,
+                "cepDestino" => $cepDestino,
+                "dataPostagem" => $dataPostagem
+            ];
+        }, $this->produtos);
+
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, "{$this->baseUrl}/prazo/v1/nacional");
+        curl_setopt($ch, CURLOPT_POST, 1);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode([
+            "idLote" => "1",
+            "parametrosPrazo" => $parametrosPrazo
+        ]));
+        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            "Content-Type: application/json",
+            "Authorization: Bearer {$this->token}"
+        ]);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        $response = curl_exec($ch);
+
+        if (curl_errno($ch)) {
+            throw new ClienteException('Erro ao consultar prazo: ' . curl_error($ch));
+        }
+
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($httpCode != 200) {
+            throw new ClienteException('Erro ao consultar prazo', $httpCode, $response);
         }
 
         return json_decode($response, true);
