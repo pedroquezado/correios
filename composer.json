@@ -1,6 +1,7 @@
 {
     "name": "pedroquezado/correios",
     "description": "Biblioteca para integração com os Correios",
+    "license": "MIT",
     "autoload": {
         "psr-4": {
             "PedroQuezado\\Code\\Correios\\": "src/"
