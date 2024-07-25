@@ -118,7 +118,14 @@ try {
 
 ### Fetching Delivery Time
 
-You can fetch the delivery time for the added products using the `consultarPrazo` method.
+The `consultarPrazo` method allows you to calculate the delivery time for your products. It takes four parameters:
+
+1. **$dataPostagem**: The posting date in the format YYYY-MM-DD.
+2. **$cepOrigem**: The origin postal code.
+3. **$cepDestino**: The destination postal code.
+4. **$dtEvento**: (Optional) The event date in the format DD-MM-YYYY. If not provided, it defaults to the posting date converted to the required format.
+
+#### Example
 
 ```php
 try {
@@ -128,6 +135,15 @@ try {
     echo 'Erro: ' . $e->getMessage();
 }
 ```
+
+#### Parameters Explanation
+
+- **$dataPostagem**: The date when the package is sent. It is essential for calculating the estimated delivery time.
+- **$cepOrigem**: The postal code from where the package is sent.
+- **$cepDestino**: The postal code to where the package is being delivered.
+- **$dtEvento**: This parameter is optional. If not provided, the method will automatically set it to the value of `$dataPostagem` formatted as DD-MM-YYYY. It represents the date of the event related to the delivery.
+
+By calling `consultarPrazo`, you can obtain the estimated delivery time and other related information for each product you have added. The method returns detailed delivery time information, which can be used to inform customers about their expected delivery dates.
 
 ### Fetching Total Price
 
@@ -167,7 +183,23 @@ All exceptions are handled using the `ClienteException` class. This class provid
 
 ```php
 try {
-    // Your code here
+    $precos = $cliente->consultarPreco();
+    print_r($precos);
+
+    $prazo = $cliente->consultarPrazo("2024-07-25", "70002900", "05311900");
+    print_r($prazo);
+
+    $precoTotal03220 = $cliente->consultarPrecoTotal('03220');
+    echo 'Preço total para o produto 03220: ' . $precoTotal03220 . PHP_EOL;
+
+    $precoTotal03298 = $cliente->consultarPrecoTotal('03298');
+    echo 'Preço total para o produto 03298: ' . $precoTotal03298 . PHP_EOL;
+
+    $prazoTotal03220 = $cliente->consultarPrazoTotal('03220');
+    echo 'Prazo total para o produto 03220: ' . $prazoTotal03220['prazoEntrega'] . PHP_EOL;
+
+    $prazoTotal03298 = $cliente->consultarPrazoTotal('03298');
+    echo 'Prazo total para o produto 03298: ' . $prazoTotal03298['prazoEntrega'] . PHP_EOL;
 } catch (ClienteException $e) {
     echo 'Erro: ' . $e->getMessage();
     echo 'HTTP Code: ' . $e->getHttpCode();
