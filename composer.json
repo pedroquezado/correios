@@ -1,0 +1,10 @@
+{
+    "name": "pedroquezado/correios",
+    "description": "Biblioteca para integração com os Correios",
+    "autoload": {
+        "psr-4": {
+            "PedroQuezado\\Code\\Correios\\": "src/"
+        }
+    },
+    "require": {}
+}
