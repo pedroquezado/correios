@@ -100,8 +100,12 @@ class Cliente
             throw new ClienteException('Erro ao obter token', $httpCode, $response);
         }
 
-        $responseDecoded = json_decode($response, true);
-        $this->tokenExpiration = time() + 3600; // Supondo que o token expira em 1 hora
+        if (is_string($response)) {
+            $responseDecoded = json_decode($response, true);
+            $this->tokenExpiration = time() + 3600; // Supondo que o token expira em 1 hora
+        } else {
+            throw new ClienteException('Erro ao obter token: resposta inválida recebida.');
+        }
 
         return $responseDecoded['token'];
     }
@@ -172,7 +176,11 @@ class Cliente
                 throw new ClienteException('Erro ao consultar preço', $httpCode, $response);
             }
 
-            $responses[] = json_decode($response, true);
+            if (is_string($response)) {
+                $responses[] = json_decode($response, true);
+            } else {
+                throw new ClienteException('Erro ao consultar preço: resposta inválida recebida.');
+            }
         }
 
         $this->respostaPreco = array_merge(...$responses);
@@ -215,25 +223,52 @@ class Cliente
     public function consultarPrazo($dataPostagem, $cepOrigem, $cepDestino, $dtEvento = null)
     {
         if (empty($this->produtos)) {
-            throw new ClienteException('Nenhum produto inserido para consulta de preço.');
+            throw new ClienteException('Nenhum produto inserido para consulta de prazo.');
         }
 
         $this->verificarToken(); // Verifica se o token de autenticação é válido e, se necessário, renova o token.
-
         $dtEvento = $dtEvento ? $dtEvento : date("d-m-Y", strtotime($dataPostagem)); // Define a data do evento. Se $dtEvento não for fornecido, usa a data de postagem convertida para o formato DD-MM-YYYY.
 
-        // Divide os produtos em lotes de no máximo 5
-        $chunks = array_chunk(array_map(function ($produto) use ($dataPostagem, $cepOrigem, $cepDestino, $dtEvento) {
-            return [
-                "coProduto" => $produto['coProduto'], // Código do produto
-                "nuRequisicao" => $produto['nuRequisicao'], // Número de requisição do produto
-                "dtEvento" => $dtEvento, // Data do evento (formato DD-MM-YYYY) 
-                "cepOrigem" => $cepOrigem, // CEP de origem
-                "cepDestino" => $cepDestino, // CEP de destino
-                "dataPostagem" => $dataPostagem // Data de postagem (formato YYYY-MM-DD)
-            ];
-        }, $this->produtos), 5); // Aplica a função para cada produto no array $this->produtos e divide em lotes de 5
+        $chunks = $this->criarChunksDeProdutos($dataPostagem, $cepOrigem, $cepDestino, $dtEvento);
 
+        $responses = $this->consultarPrazoEmChunks($chunks);
+
+        $this->respostaPrazo = array_merge(...$responses);
+        return $this->respostaPrazo;
+    }
+
+    /**
+     * Cria lotes de produtos divididos em grupos de no máximo 5 itens.
+     * 
+     * @param string $dataPostagem A data de postagem no formato YYYY-MM-DD.
+     * @param string $cepOrigem O CEP de origem do envio.
+     * @param string $cepDestino O CEP de destino do envio.
+     * @param string $dtEvento A data do evento no formato DD-MM-YYYY.
+     * @return array Os produtos divididos em lotes de no máximo 5 itens.
+     */
+    private function criarChunksDeProdutos($dataPostagem, $cepOrigem, $cepDestino, $dtEvento)
+    {
+        return array_chunk(array_map(function ($produto) use ($dataPostagem, $cepOrigem, $cepDestino, $dtEvento) {
+            return [
+                "coProduto" => $produto['coProduto'],
+                "nuRequisicao" => $produto['nuRequisicao'],
+                "dtEvento" => $dtEvento,
+                "cepOrigem" => $cepOrigem,
+                "cepDestino" => $cepDestino,
+                "dataPostagem" => $dataPostagem
+            ];
+        }, $this->produtos), 5);
+    }
+
+    /**
+     * Consulta o prazo de entrega dos produtos em lotes e retorna as respostas.
+     * 
+     * @param array $chunks Os lotes de produtos a serem consultados.
+     * @return array As respostas da consulta de prazo de entrega.
+     * @throws ClienteException Se ocorrer um erro durante a consulta.
+     */
+    private function consultarPrazoEmChunks($chunks)
+    {
         $responses = [];
 
         foreach ($chunks as $chunk) {
@@ -262,11 +297,14 @@ class Cliente
                 throw new ClienteException('Erro ao consultar prazo', $httpCode, $response);
             }
 
-            $responses[] = json_decode($response, true);
+            if (is_string($response)) {
+                $responses[] = json_decode($response, true);
+            } else {
+                throw new ClienteException('Erro ao consultar prazo: resposta inválida recebida.');
+            }
         }
 
-        $this->respostaPrazo = array_merge(...$responses);
-        return $this->respostaPrazo;
+        return $responses;
     }
 
     /**
