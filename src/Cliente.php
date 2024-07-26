@@ -136,34 +136,46 @@ class Cliente
      */
     public function consultarPreco()
     {
+        if (empty($this->produtos)) {
+            throw new ClienteException('Nenhum produto inserido para consulta de preço.');
+        }
+
         $this->verificarToken();
 
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, "{$this->baseUrl}/preco/v1/nacional");
-        curl_setopt($ch, CURLOPT_POST, 1);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode([
-            "idLote" => "1",
-            "parametrosProduto" => $this->produtos
-        ]));
-        curl_setopt($ch, CURLOPT_HTTPHEADER, [
-            "Content-Type: application/json",
-            "Authorization: Bearer {$this->token}"
-        ]);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        $response = curl_exec($ch);
+        $chunks = array_chunk($this->produtos, 5); // Divide os produtos em lotes de no máximo 5
 
-        if (curl_errno($ch)) {
-            throw new ClienteException('Erro ao consultar preço: ' . curl_error($ch));
+        $responses = [];
+
+        foreach ($chunks as $chunk) {
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, "{$this->baseUrl}/preco/v1/nacional");
+            curl_setopt($ch, CURLOPT_POST, 1);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode([
+                "idLote" => "1",
+                "parametrosProduto" => $chunk
+            ]));
+            curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                "Content-Type: application/json",
+                "Authorization: Bearer {$this->token}"
+            ]);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            $response = curl_exec($ch);
+
+            if (curl_errno($ch)) {
+                throw new ClienteException('Erro ao consultar preço: ' . curl_error($ch));
+            }
+
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            if ($httpCode != 200) {
+                throw new ClienteException('Erro ao consultar preço', $httpCode, $response);
+            }
+
+            $responses[] = json_decode($response, true);
         }
 
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-
-        if ($httpCode != 200) {
-            throw new ClienteException('Erro ao consultar preço', $httpCode, $response);
-        }
-
-        $this->respostaPreco = json_decode($response, true);
+        $this->respostaPreco = array_merge(...$responses);
         return $this->respostaPreco;
     }
 
@@ -202,50 +214,58 @@ class Cliente
      */
     public function consultarPrazo($dataPostagem, $cepOrigem, $cepDestino, $dtEvento = null)
     {
+        if (empty($this->produtos)) {
+            throw new ClienteException('Nenhum produto inserido para consulta de preço.');
+        }
+
         $this->verificarToken(); // Verifica se o token de autenticação é válido e, se necessário, renova o token.
 
         $dtEvento = $dtEvento ? $dtEvento : date("d-m-Y", strtotime($dataPostagem)); // Define a data do evento. Se $dtEvento não for fornecido, usa a data de postagem convertida para o formato DD-MM-YYYY.
 
-
-        $parametrosPrazo = array_map(function ($produto) use ($dataPostagem, $cepOrigem, $cepDestino, $dtEvento) {
-            // Mapeia os produtos para criar os parâmetros de prazo para a consulta
+        // Divide os produtos em lotes de no máximo 5
+        $chunks = array_chunk(array_map(function ($produto) use ($dataPostagem, $cepOrigem, $cepDestino, $dtEvento) {
             return [
                 "coProduto" => $produto['coProduto'], // Código do produto
                 "nuRequisicao" => $produto['nuRequisicao'], // Número de requisição do produto
-                "dtEvento" => $dtEvento, // Data do evento (formato DD-MM-YYYY)
+                "dtEvento" => $dtEvento, // Data do evento (formato DD-MM-YYYY) 
                 "cepOrigem" => $cepOrigem, // CEP de origem
                 "cepDestino" => $cepDestino, // CEP de destino
                 "dataPostagem" => $dataPostagem // Data de postagem (formato YYYY-MM-DD)
             ];
-        }, $this->produtos); // Aplica a função para cada produto no array $this->produtos
+        }, $this->produtos), 5); // Aplica a função para cada produto no array $this->produtos e divide em lotes de 5
 
+        $responses = [];
 
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, "{$this->baseUrl}/prazo/v1/nacional");
-        curl_setopt($ch, CURLOPT_POST, 1);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode([
-            "idLote" => "1",
-            "parametrosPrazo" => $parametrosPrazo
-        ]));
-        curl_setopt($ch, CURLOPT_HTTPHEADER, [
-            "Content-Type: application/json",
-            "Authorization: Bearer {$this->token}"
-        ]);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        $response = curl_exec($ch);
+        foreach ($chunks as $chunk) {
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, "{$this->baseUrl}/prazo/v1/nacional");
+            curl_setopt($ch, CURLOPT_POST, 1);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode([
+                "idLote" => "1",
+                "parametrosPrazo" => $chunk
+            ]));
+            curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                "Content-Type: application/json",
+                "Authorization: Bearer {$this->token}"
+            ]);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            $response = curl_exec($ch);
 
-        if (curl_errno($ch)) {
-            throw new ClienteException('Erro ao consultar prazo: ' . curl_error($ch));
+            if (curl_errno($ch)) {
+                throw new ClienteException('Erro ao consultar prazo: ' . curl_error($ch));
+            }
+
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            if ($httpCode != 200) {
+                throw new ClienteException('Erro ao consultar prazo', $httpCode, $response);
+            }
+
+            $responses[] = json_decode($response, true);
         }
 
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-
-        if ($httpCode != 200) {
-            throw new ClienteException('Erro ao consultar prazo', $httpCode, $response);
-        }
-
-        $this->respostaPrazo = json_decode($response, true);
+        $this->respostaPrazo = array_merge(...$responses);
         return $this->respostaPrazo;
     }
 
