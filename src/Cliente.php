@@ -2,6 +2,8 @@
 
 namespace PedroQuezado\Code\Correios;
 
+use \CURLFile;
+
 /**
  * Classe Cliente para integração com os serviços dos Correios.
  */
@@ -348,5 +350,169 @@ class Cliente
 		}
 
 		throw new ClienteException('Produto não encontrado na resposta do prazo.');
+	}
+
+	/**
+	 * Realiza a pré-postagem a faturar de objetos registrados.
+	 *
+	 * @param array $dadosPrePostagem Dados da pré-postagem.
+	 * @return array Resposta da API dos Correios.
+	 * @throws ClienteException Em caso de erro na solicitação.
+	 */
+	public function realizarPrePostagem(array $dadosPrePostagem)
+	{
+		$this->verificarToken();
+
+		$ch = curl_init();
+		curl_setopt($ch, CURLOPT_URL, "{$this->baseUrl}/prepostagem/v1/prepostagens");
+		curl_setopt($ch, CURLOPT_POST, 1);
+		curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($dadosPrePostagem));
+		curl_setopt($ch, CURLOPT_HTTPHEADER, [
+			"Content-Type: application/json",
+			"Authorization: Bearer {$this->token}"
+		]);
+		curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+		$response = curl_exec($ch);
+
+		if (curl_errno($ch)) {
+			throw new ClienteException('Erro ao realizar pré-postagem: ' . curl_error($ch));
+		}
+
+		$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+		curl_close($ch);
+
+		if ($httpCode != 200) {
+			throw new ClienteException('Erro ao realizar pré-postagem', $httpCode, $response);
+		}
+
+		return json_decode($response, true);
+	}
+
+	/**
+	 * Cancela uma pré-postagem pelo identificador.
+	 *
+	 * @param string $idPrePostagem Identificador da pré-postagem.
+	 * @param string|null $idSolicitante ID Correios do solicitante do cancelamento (opcional).
+	 * @return array Resposta da API dos Correios.
+	 * @throws ClienteException Se ocorrer um erro na solicitação.
+	 */
+	public function cancelarPrePostagem(string $idPrePostagem, string $idSolicitante = null)
+	{
+	    $this->verificarToken(); // Garante que o token esteja válido
+
+	    // Monta a URL com os parâmetros
+	    $url = "{$this->baseUrl}/prepostagem/v1/prepostagens/{$idPrePostagem}";
+
+	    if (!empty($idSolicitante)) {
+	        $url .= "?idCorreiosSolicitanteCancelamento={$idSolicitante}";
+	    }
+
+	    $ch = curl_init();
+	    curl_setopt($ch, CURLOPT_URL, $url);
+	    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "DELETE");
+	    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+	        "Content-Type: application/json",
+	        "Authorization: Bearer {$this->token}"
+	    ]);
+	    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+	    
+	    $response = curl_exec($ch);
+
+	    if (curl_errno($ch)) {
+	        throw new ClienteException('Erro ao cancelar pré-postagem: ' . curl_error($ch));
+	    }
+
+	    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+	    curl_close($ch);
+
+	    if ($httpCode != 200) {
+	        throw new ClienteException("Erro ao cancelar pré-postagem", $httpCode, $response);
+	    }
+
+	    return json_decode($response, true);
+	}
+
+	/**
+	 * Realiza a pré-postagem de múltiplos objetos registrados em um único envio.
+	 *
+	 * @param array $listaObjetos Lista de objetos para pré-postagem.
+	 * @return array Resposta da API dos Correios.
+	 * @throws ClienteException Em caso de erro na solicitação.
+	 */
+	public function realizarPrePostagemEmLote(array $listaObjetos)
+	{
+		$this->verificarToken();
+
+		$caminhoArquivo = sys_get_temp_dir() . "/prepostagem.json";
+
+		// Salvar o JSON no arquivo
+		file_put_contents($caminhoArquivo, json_encode([$listaObjetos]));
+
+		// Criar um objeto CURLFile para o upload do arquivo
+    	$arquivo = new CURLFile($caminhoArquivo, 'application/json', 'prepostagem.json');
+
+		$ch = curl_init();
+		curl_setopt($ch, CURLOPT_URL, "{$this->baseUrl}/prepostagem/v1/prepostagens/lista/objetosregistrados");
+		curl_setopt($ch, CURLOPT_POST, 1);
+		// curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($listaObjetos));
+		curl_setopt($ch, CURLOPT_POSTFIELDS, ["arquivo" => $arquivo]);
+		curl_setopt($ch, CURLOPT_HTTPHEADER, [
+			"Content-Type: multipart/form-data",
+			"Authorization: Bearer {$this->token}"
+		]);
+		curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+		$response = curl_exec($ch);
+
+		if (curl_errno($ch)) {
+			throw new ClienteException('Erro ao realizar pré-postagem em lote: ' . curl_error($ch));
+		}
+
+		$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+		curl_close($ch);
+
+		if ($httpCode != 200) {
+			throw new ClienteException('Erro ao realizar pré-postagem em lote', $httpCode, $response);
+		}
+
+		return json_decode($response, true);
+	}
+
+
+	/**
+	 * Gera o rótulo para o objeto previamente cadastrado na pré-postagem.
+	 *
+	 * @param string $idCorreios ID retornado na pré-postagem.
+	 * @return string URL para download do rótulo.
+	 * @throws ClienteException Em caso de erro na solicitação.
+	 */
+	public function gerarRotulo($idCorreios)
+	{
+		$this->verificarToken();
+
+		$ch = curl_init();
+		curl_setopt($ch, CURLOPT_URL, "{$this->baseUrl}/prepostagem/v1/prepostagens/rotulo");
+		curl_setopt($ch, CURLOPT_POST, 1);
+		curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode(["idCorreios" => $idCorreios]));
+		curl_setopt($ch, CURLOPT_HTTPHEADER, [
+			"Content-Type: application/json",
+			"Authorization: Bearer {$this->token}"
+		]);
+		curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+		$response = curl_exec($ch);
+
+		if (curl_errno($ch)) {
+			throw new ClienteException('Erro ao gerar rótulo: ' . curl_error($ch));
+		}
+
+		$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+		curl_close($ch);
+
+		if ($httpCode != 200) {
+			throw new ClienteException('Erro ao gerar rótulo', $httpCode, $response);
+		}
+
+		$responseDecoded = json_decode($response, true);
+
+		return $responseDecoded['urlEtiqueta'] ?? '';
 	}
 }
