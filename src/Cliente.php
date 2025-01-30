@@ -382,7 +382,7 @@ class Cliente
 		curl_close($ch);
 
 		if ($httpCode != 200) {
-			throw new ClienteException('Erro ao realizar pré-postagem', $httpCode, $response);
+			throw new ClienteException("Erro ao realizar pré-postagem {$response}", $httpCode, $response);
 		}
 
 		return json_decode($response, true);
@@ -426,7 +426,7 @@ class Cliente
 	    curl_close($ch);
 
 	    if ($httpCode != 200) {
-	        throw new ClienteException("Erro ao cancelar pré-postagem", $httpCode, $response);
+	        throw new ClienteException("Erro ao cancelar pré-postagem: {$response}", $httpCode, $response);
 	    }
 
 	    return json_decode($response, true);
@@ -515,4 +515,99 @@ class Cliente
 
 		return $responseDecoded['urlEtiqueta'] ?? '';
 	}
+
+	/**
+	 * Solicita a geração assíncrona do rótulo (etiqueta) para pré-postagem.
+	 *
+	 * @param array $codigosObjeto Lista de códigos dos objetos.
+	 * @param string $idCorreios ID Correios do solicitante.
+	 * @param string $numeroCartaoPostagem Número do cartão de postagem.
+	 * @param string $tipoRotulo Tipo de rótulo (ex: "REGISTRADO").
+	 * @param string $formatoRotulo Formato do rótulo (ex: "PDF").
+	 * @param string $imprimeRemetente Se imprime o remetente ("S" ou "N").
+	 * @param string $layoutImpressao Layout de impressão (ex: "A4").
+	 *
+	 * @return array Resposta da API com detalhes do processamento do rótulo.
+	 * @throws ClienteException Se ocorrer um erro na solicitação.
+	 */
+	public function emitirRotuloPrePostagem(
+	    array $codigosObjeto,
+	    string $idCorreios,
+	    string $numeroCartaoPostagem,
+	    string $tipoRotulo,
+	    string $formatoRotulo,
+	    string $imprimeRemetente,
+	    string $layoutImpressao
+	) {
+	    $this->verificarToken();
+
+	    // Monta o corpo da requisição JSON
+	    $dadosRotulo = [
+	        "codigosObjeto" => $codigosObjeto,
+	        "idCorreios" => $idCorreios,
+	        "numeroCartaoPostagem" => $numeroCartaoPostagem,
+	        "tipoRotulo" => $tipoRotulo,
+	        "formatoRotulo" => $formatoRotulo,
+	        "imprimeRemetente" => $imprimeRemetente,
+	        "layoutImpressao" => $layoutImpressao
+	    ];
+
+	    $ch = curl_init();
+	    curl_setopt($ch, CURLOPT_URL, "{$this->baseUrl}/prepostagem/v1/prepostagens/rotulo/assincrono/pdf");
+	    curl_setopt($ch, CURLOPT_POST, 1);
+	    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($dadosRotulo));
+	    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+	        "Content-Type: application/json",
+	        "Authorization: Bearer {$this->token}"
+	    ]);
+	    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+	    $response = curl_exec($ch);
+
+	    if (curl_errno($ch)) {
+	        throw new ClienteException('Erro ao solicitar emissão do rótulo: ' . curl_error($ch));
+	    }
+
+	    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+	    curl_close($ch);
+
+	    if ($httpCode != 200 && $httpCode != 202) {
+	        throw new ClienteException("Erro ao solicitar emissão do rótulo. HTTP Code: $httpCode. Response: $response");
+	    }
+
+	    return json_decode($response, true);
+	}
+
+	/**
+     * Faz o download do rótulo solicitado assincronamente.
+     *
+     * @param string $idRecibo ID do recibo da solicitação de rótulo.
+     * @return array Contendo os dados do PDF ou erro.
+     * @throws ClienteException Em caso de erro na requisição.
+     */
+    public function downloadRotuloAssincrono(string $idRecibo)
+    {
+        $this->verificarToken(); // Garante que o token esteja válido
+
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, "{$this->baseUrl}/prepostagem/v1/prepostagens/rotulo/download/assincrono/{$idRecibo}");
+	    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+	        "Content-Type: application/json",
+	        "Authorization: Bearer {$this->token}"
+	    ]);
+	    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        $response = curl_exec($ch);
+
+        if (curl_errno($ch)) {
+            throw new ClienteException('Erro ao baixar o rótulo: ' . curl_error($ch));
+        }
+
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($httpCode != 200) {
+            throw new ClienteException("Erro ao baixar o rótulo. HTTP Code: $httpCode. Response: $response");
+        }
+
+        return json_decode($response, true);
+    }
 }
